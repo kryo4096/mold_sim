@@ -376,14 +376,14 @@ fn main() -> Result<()> {
     let mut diffusion_constant = 2.;
     let mut dissipation_constant = 27.;
 
-    let mut sensor_angle: f32 = 30.;
-    let mut sensor_distance: f32 = 2.;
+    let mut sensor_angle: f32 = 70.;
+    let mut sensor_distance: f32 = 5.;
     let mut sensor_size: i32 = 4;
-    let mut actor_speed: f32 = 150.;
+    let mut actor_speed: f32 = 100.;
     let mut phero_strength: f32 = 20.;
     let mut turn_speed: f32 = 10.;
-    let mut turn_gamma: f32 = 0.8;
-    let mut randomness: f32 = 2.5;
+    let mut turn_gamma: f32 = 0.3;
+    let mut randomness: f32 = 2.0;
 
     let mut hue: f32 = 0.;
     let mut gamma: f32 = 0.8;
@@ -628,16 +628,21 @@ fn main() -> Result<()> {
                 egui::Window::new("Settings").show(&egui_platform.context(), |ui| {
                     ui.heading("Pheromones");
 
-                    ui.add(
-                        Slider::f32(&mut diffusion_constant, 0.0..=20.0).text("Diffusion Constant"),
-                    );
+                    ui.indent(1, |ui| {
+                        ui.add(
+                            Slider::f32(&mut diffusion_constant, 0.0..=20.0)
+                                .text("Diffusion Constant"),
+                        );
 
-                    ui.add(
-                        Slider::f32(&mut dissipation_constant, 0.0..=20.0)
-                            .text("Dissipation Constant"),
-                    );
+                        ui.add(
+                            Slider::f32(&mut dissipation_constant, 0.0..=20.0)
+                                .text("Dissipation Constant"),
+                        );
 
-                    ui.add(Slider::f32(&mut phero_strength, 0.0..=200.0).text("Strength"));
+                        ui.add(Slider::f32(&mut phero_strength, 0.0..=200.0).text("Strength"));
+                    });
+
+                    ui.advance_cursor(10.);
 
                     ui.heading("Actors");
                     ui.indent(1, |ui| {
@@ -652,14 +657,20 @@ fn main() -> Result<()> {
                         ui.add(Slider::f32(&mut actor_speed, 10.0..=150.).text("Speed"));
                         ui.add(Slider::f32(&mut turn_speed, 0.0..=15.).text("Turn Speed"));
                         ui.add(Slider::f32(&mut turn_gamma, -2.0..=2.0).text("Turn Gamma"));
-                        ui.add(Slider::f32(&mut randomness, 0.0..=100.).text("Randomness"));
+                        ui.add(Slider::f32(&mut randomness, 0.0..=10.).text("Randomness"));
                     });
+
+                    ui.advance_cursor(10.);
 
                     ui.heading("Visual");
 
-                    ui.add(Slider::f32(&mut hue, 0.0..=1.0).text("Hue"));
-                    ui.add(Slider::f32(&mut gamma, 0.1..=1.4).text("Gamma"));
-                    ui.add(Slider::f32(&mut brightness, 1.0..=20.0).text("Brightness"));
+                    ui.indent(3, |ui| {
+                        ui.add(Slider::f32(&mut hue, 0.0..=1.0).text("Hue"));
+                        ui.add(Slider::f32(&mut gamma, 0.1..=1.4).text("Gamma"));
+                        ui.add(Slider::f32(&mut brightness, 1.0..=20.0).text("Brightness"));
+                    });
+
+                    ui.advance_cursor(10.);
 
                     ui.label("Press R to reset the Simulation!");
                 });
