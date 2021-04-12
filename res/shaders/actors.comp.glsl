@@ -21,6 +21,7 @@ layout(push_constant) uniform PushConstantData {
     float actor_speed;
     float phero_strength;
     float turn_speed;
+    float turn_gamma;
     float randomness;
 } u;
 
@@ -88,9 +89,9 @@ void main() {
     } else if (fs < ls && fs < rs) {
         delta_angle = (random(13132) - 0.5) * 4 * (rs + ls) * 0.02;
     } else if (rs > ls) {
-        delta_angle = -pow(rs, 0.8);
+        delta_angle = -pow(rs, u.turn_gamma);
     } else if (ls > rs) {
-        delta_angle = pow(ls, 0.8);
+        delta_angle = pow(ls, u.turn_gamma);
     }
 
     delta_angle += (random(131232) - 0.5) * u.randomness * 2;

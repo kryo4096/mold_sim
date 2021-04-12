@@ -1,7 +1,7 @@
-use std::mem;
 use std::sync::Arc;
 use std::vec::Vec;
 use std::{error::Error, time::Instant};
+use std::{f32::consts, mem};
 
 use rand::prelude::*;
 use vulkano::{
@@ -111,7 +111,7 @@ fn create_fullscreen_window(
     let surface = WindowBuilder::new()
         .with_inner_size(mode.size())
         .with_min_inner_size(mode.size())
-        .with_fullscreen(Some(Fullscreen::Exclusive(mode)))
+        .with_fullscreen(Some(Fullscreen::Borderless(event_loop.primary_monitor())))
         .with_title("Wave Equation (Click and Drag to apply force to pixels)")
         .build_vk_surface(&event_loop, instance)?;
 
@@ -128,7 +128,7 @@ fn main() -> Result<()> {
     let (args, _) = opts! {
         synopsis "wave-eq-sim - simulates the classical wave equation using rust + vulkan";
         opt pixel_size:u32=1, desc:"set the pixel size";
-        opt actor_count:u32=500000, desc: "number of actors";
+        opt actor_count:u32=1000000, desc: "number of actors";
     }
     .parse_or_exit();
 
@@ -373,15 +373,16 @@ fn main() -> Result<()> {
     let mut render_image = image2;
     let mut back_image = image1;
 
-    let mut diffusion_constant = 10.;
-    let mut dissipation_constant = 5.;
+    let mut diffusion_constant = 2.;
+    let mut dissipation_constant = 27.;
 
-    let mut sensor_angle: f32 = std::f32::consts::PI / 3.;
+    let mut sensor_angle: f32 = 30.;
     let mut sensor_distance: f32 = 2.;
     let mut sensor_size: i32 = 4;
     let mut actor_speed: f32 = 150.;
     let mut phero_strength: f32 = 20.;
     let mut turn_speed: f32 = 10.;
+    let mut turn_gamma: f32 = 0.8;
     let mut randomness: f32 = 2.5;
 
     let mut hue: f32 = 0.;
@@ -523,12 +524,13 @@ fn main() -> Result<()> {
                     delta_time,
                     time,
                     init: clear_images as _,
-                    sensor_angle,
+                    sensor_angle: sensor_angle / 360. * 2. * consts::PI,
                     sensor_distance,
                     sensor_size,
                     actor_speed,
                     phero_strength,
                     turn_speed,
+                    turn_gamma,
                     randomness,
                 };
 
@@ -640,16 +642,17 @@ fn main() -> Result<()> {
                     ui.heading("Actors");
                     ui.indent(1, |ui| {
                         ui.heading("Sensor");
-                        ui.add(Slider::f32(&mut sensor_angle, 0.1..=3.141 / 2.).text("Angle"));
+                        ui.add(Slider::f32(&mut sensor_angle, 15.0..=90.0).text("Angle"));
                         ui.add(Slider::f32(&mut sensor_distance, 1.0..=10.).text("Distance"));
                         ui.add(Slider::i32(&mut sensor_size, 1..=6).text("Size"));
                     });
 
                     ui.indent(2, |ui| {
                         ui.heading("Movement");
-                        ui.add(Slider::f32(&mut actor_speed, 10.0..=500.).text("Speed"));
-                        ui.add(Slider::f32(&mut turn_speed, 0.0..=200.).text("Turn Speed"));
-                        ui.add(Slider::f32(&mut randomness, 0.0..=10.).text("Randomness"));
+                        ui.add(Slider::f32(&mut actor_speed, 10.0..=150.).text("Speed"));
+                        ui.add(Slider::f32(&mut turn_speed, 0.0..=15.).text("Turn Speed"));
+                        ui.add(Slider::f32(&mut turn_gamma, -2.0..=2.0).text("Turn Gamma"));
+                        ui.add(Slider::f32(&mut randomness, 0.0..=100.).text("Randomness"));
                     });
 
                     ui.heading("Visual");
@@ -657,6 +660,8 @@ fn main() -> Result<()> {
                     ui.add(Slider::f32(&mut hue, 0.0..=1.0).text("Hue"));
                     ui.add(Slider::f32(&mut gamma, 0.1..=1.4).text("Gamma"));
                     ui.add(Slider::f32(&mut brightness, 1.0..=20.0).text("Brightness"));
+
+                    ui.label("Press R to reset the Simulation!");
                 });
 
                 let (_output, clipped_shapes) = egui_platform.end_frame();
