@@ -24,7 +24,10 @@ use vulkano::{
 use vulkano_win::VkSurfaceBuild;
 
 use winit::{
-    event::{ElementState, Event, KeyboardInput, MouseButton, VirtualKeyCode, WindowEvent},
+    event::{
+        ElementState, Event, KeyboardInput, MouseButton, MouseScrollDelta, VirtualKeyCode,
+        WindowEvent,
+    },
     event_loop::{ControlFlow, EventLoop},
     window::{Fullscreen, Window, WindowBuilder},
 };
@@ -127,12 +130,12 @@ fn create_fullscreen_window(
 fn main() -> Result<()> {
     let (args, _) = opts! {
         synopsis "wave-eq-sim - simulates the classical wave equation using rust + vulkan";
-        opt pixel_size:u32=1, desc:"set the pixel size";
+        opt pixel_size:f32=1.0, desc:"set the pixel size";
         opt actor_count:u32=1000000, desc: "number of actors";
     }
     .parse_or_exit();
 
-    let pixel_size: u32 = args.pixel_size;
+    let pixel_size: f32 = args.pixel_size;
 
     let actor_count = args.actor_count;
 
@@ -236,12 +239,14 @@ fn main() -> Result<()> {
             .expect("failed to create compute pipeline"),
     );
 
-    let image1 = StorageImage::with_usage(
+    let phero_map_dims = Dimensions::Dim2d {
+        width: (dimensions[0] as f32 / pixel_size) as u32,
+        height: (dimensions[1] as f32 / pixel_size) as u32,
+    };
+
+    let phero_map_1 = StorageImage::with_usage(
         device.clone(),
-        Dimensions::Dim2d {
-            width: dimensions[0] / pixel_size,
-            height: dimensions[1] / pixel_size,
-        },
+        phero_map_dims,
         Format::R32G32Sfloat,
         ImageUsage {
             sampled: true,
@@ -252,12 +257,9 @@ fn main() -> Result<()> {
         Some(queue.family()),
     )?;
 
-    let image2 = StorageImage::with_usage(
+    let phero_map_2 = StorageImage::with_usage(
         device.clone(),
-        Dimensions::Dim2d {
-            width: dimensions[0] / pixel_size,
-            height: dimensions[1] / pixel_size,
-        },
+        phero_map_dims,
         Format::R32G32Sfloat,
         ImageUsage {
             storage: true,
@@ -283,6 +285,9 @@ fn main() -> Result<()> {
     )?;
 
     let vertex_shader = vs::Shader::load(device.clone()).expect("failed to create vertex shader");
+
+    let vs_uniform_buffer = CpuBufferPool::<vs::ty::Data>::new(device.clone(), BufferUsage::all());
+
     let fragment_shader =
         fs::Shader::load(device.clone()).expect("failed to create fragment shader");
 
@@ -334,9 +339,9 @@ fn main() -> Result<()> {
                 .unwrap();
 
         clear_builder
-            .clear_color_image(image1.clone(), ClearValue::Float([0.0; 4]))
+            .clear_color_image(phero_map_1.clone(), ClearValue::Float([0.0; 4]))
             .unwrap()
-            .clear_color_image(image2.clone(), ClearValue::Float([0.0; 4]))
+            .clear_color_image(phero_map_2.clone(), ClearValue::Float([0.0; 4]))
             .unwrap();
 
         let commands = clear_builder.build().unwrap();
@@ -367,11 +372,10 @@ fn main() -> Result<()> {
     let mut force_mult = 1.;
 
     let mut mouse_pos = [0., 0.];
-    let mut wave_pos = [0., 0.];
 
     let mut clear_images = true;
-    let mut render_image = image2;
-    let mut back_image = image1;
+    let mut render_image = phero_map_2;
+    let mut back_image = phero_map_1;
 
     let mut diffusion_constant = 2.;
     let mut dissipation_constant = 27.;
@@ -394,7 +398,15 @@ fn main() -> Result<()> {
     let mut relative_angle = 0.0;
     let mut random_angle = 360.;
 
-    let mut actor_count = args.actor_count;
+    let mut actor_count = args.actor_count / 2;
+
+    let mut zoom: f32 = 1.;
+
+    let mut zoom_pos = [0.5, 0.5];
+
+    let mut time_step = 0.01;
+
+    let mut delta_time = 0.0;
 
     events_loop.run(move |event, _, control_flow| {
         egui_platform.handle_event(&event);
@@ -416,21 +428,15 @@ fn main() -> Result<()> {
                 recreate_swapchain = true;
             }
             Event::WindowEvent {
-                event: WindowEvent::MouseInput { state, button, .. },
+                event:
+                    WindowEvent::MouseWheel {
+                        delta: MouseScrollDelta::LineDelta(_, y),
+                        ..
+                    },
                 ..
-            } => match state {
-                ElementState::Pressed => {
-                    mouse_pressed = true;
-                    wave_pos = mouse_pos;
-
-                    match button {
-                        MouseButton::Left => force_mult = 1.,
-                        MouseButton::Right => force_mult = -1.,
-                        _ => (),
-                    }
-                }
-                ElementState::Released => mouse_pressed = false,
-            },
+            } => {
+                zoom = (zoom * f32::powf(2., y as f32 / 8.)).max(1.);
+            }
             Event::WindowEvent {
                 event: WindowEvent::CursorMoved { position, .. },
                 ..
@@ -438,7 +444,7 @@ fn main() -> Result<()> {
                 mouse_pos = [
                     position.x as f32 / dimensions[0] as f32,
                     position.y as f32 / dimensions[1] as f32,
-                ]
+                ];
             }
             Event::WindowEvent {
                 event:
@@ -464,9 +470,35 @@ fn main() -> Result<()> {
             Event::RedrawEventsCleared => {
                 previous_frame_end.as_mut().unwrap().cleanup_finished();
 
-                let delta_time = 0.01;
+                delta_time = last_frame_time.elapsed().as_secs_f32();
 
                 last_frame_time = Instant::now();
+
+                {
+                    let mut nav_delta = (0., 0.);
+
+                    const ZONE_SIZE: f32 = 0.03;
+                    const NAV_SPEED: f32 = 0.8;
+
+                    if mouse_pos[0] < ZONE_SIZE {
+                        nav_delta.0 -= 1.;
+                    }
+
+                    if mouse_pos[0] > 1. - ZONE_SIZE {
+                        nav_delta.0 += 1.;
+                    }
+
+                    if mouse_pos[1] < ZONE_SIZE {
+                        nav_delta.1 -= 1.;
+                    }
+
+                    if mouse_pos[1] > 1. - ZONE_SIZE {
+                        nav_delta.1 += 1.;
+                    }
+
+                    zoom_pos[0] = zoom_pos[0] + nav_delta.0 * NAV_SPEED * delta_time / zoom;
+                    zoom_pos[1] = zoom_pos[1] + nav_delta.1 * NAV_SPEED * delta_time / zoom;
+                }
 
                 if recreate_swapchain {
                     let dimensions: [u32; 2] = surface.window().inner_size().into();
@@ -517,17 +549,18 @@ fn main() -> Result<()> {
                     .ok_or("unable to get compute layout")
                     .unwrap();
 
-                let render_layout = pipeline.layout().descriptor_set_layout(0).unwrap();
+                let fs_layout = pipeline.layout().descriptor_set_layout(0).unwrap();
+                let vs_layout = pipeline.layout().descriptor_set_layout(1).unwrap();
 
                 let phero_compute_uniforms = phero_cs::ty::PushConstantData {
-                    delta_time: delta_time / TIME_STEPS_PER_FRAME as f32,
+                    delta_time: time_step / TIME_STEPS_PER_FRAME as f32,
                     init_image: clear_images as _,
                     diffusion_constant,
                     dissipation_constant,
                     time,
                 };
 
-                let render_uniforms = fs_uniform_buffer
+                let fs_uniforms = fs_uniform_buffer
                     .next(fs::ty::Data {
                         hue,
                         gamma,
@@ -535,11 +568,23 @@ fn main() -> Result<()> {
                     })
                     .unwrap();
 
-                let render_set = Arc::new(
-                    PersistentDescriptorSet::start(render_layout.clone())
+                let fs_set = Arc::new(
+                    PersistentDescriptorSet::start(fs_layout.clone())
                         .add_sampled_image(render_image.clone(), sampler.clone())
                         .unwrap()
-                        .add_buffer(render_uniforms)
+                        .add_buffer(fs_uniforms)
+                        .unwrap()
+                        .build()
+                        .unwrap(),
+                );
+
+                let vs_uniforms = vs_uniform_buffer
+                    .next(vs::ty::Data { zoom_pos, zoom })
+                    .unwrap();
+
+                let vs_set = Arc::new(
+                    PersistentDescriptorSet::start(vs_layout.clone())
+                        .add_buffer(vs_uniforms)
                         .unwrap()
                         .build()
                         .unwrap(),
@@ -554,7 +599,7 @@ fn main() -> Result<()> {
                 let actors_uniforms = cs_actors_uniform_buffer
                     .next(actors_cs::ty::Data {
                         actor_count,
-                        delta_time,
+                        delta_time: time_step,
                         time,
                         init: clear_images as _,
                         sensor_angle: sensor_angle / 360. * 2. * consts::PI,
@@ -605,8 +650,8 @@ fn main() -> Result<()> {
                 builder
                     .dispatch(
                         [
-                            dimensions[0] / pixel_size / 8 + 1,
-                            dimensions[1] / pixel_size / 8 + 1,
+                            phero_map_dims.width() / 8 + 1,
+                            phero_map_dims.height() / 8 + 1,
                             1,
                         ],
                         phero_compute_pipeline.clone(),
@@ -615,9 +660,6 @@ fn main() -> Result<()> {
                         vec![],
                     )
                     .unwrap();
-
-                wave_pos[0] += (mouse_pos[0] - wave_pos[0]) * delta_time * 100.;
-                wave_pos[1] += (mouse_pos[1] - wave_pos[1]) * delta_time * 100.;
 
                 mem::swap(&mut render_image, &mut back_image);
 
@@ -632,7 +674,7 @@ fn main() -> Result<()> {
                         pipeline.clone(),
                         &dynamic_state,
                         vertex_buffer.clone(),
-                        render_set.clone(),
+                        (fs_set.clone(), vs_set.clone()),
                         (),
                         vec![],
                     )
@@ -670,10 +712,9 @@ fn main() -> Result<()> {
 
                     ui.advance_cursor(10.);
 
-                    ui.heading("Actors");
+                    ui.heading("Actor Sensors");
 
                     ui.indent(1, |ui| {
-                        ui.heading("Sensor");
                         ui.add(
                             Slider::f32(&mut sensor_angle, 15.0..=90.0)
                                 .text("Angle")
@@ -683,8 +724,11 @@ fn main() -> Result<()> {
                         ui.add(Slider::i32(&mut sensor_size, 1..=6).text("Size"));
                     });
 
+                    ui.advance_cursor(10.);
+
+                    ui.heading("Actor Movement");
+
                     ui.indent(2, |ui| {
-                        ui.heading("Movement");
                         ui.add(Slider::f32(&mut actor_speed, 10.0..=150.).text("Speed"));
                         ui.add(Slider::f32(&mut turn_speed, 0.0..=100.).text("Turn Speed"));
                         ui.add(Slider::f32(&mut turn_gamma, -2.0..=2.0).text("Turn Gamma"));
@@ -747,7 +791,7 @@ fn main() -> Result<()> {
                     .then_swapchain_present(queue.clone(), swapchain.clone(), image_num)
                     .then_signal_fence_and_flush();
 
-                time += delta_time;
+                time += time_step;
 
                 match future {
                     Ok(future) => {
