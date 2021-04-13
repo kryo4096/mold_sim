@@ -130,7 +130,7 @@ fn create_fullscreen_window(
 fn main() -> Result<()> {
     let (args, _) = opts! {
         synopsis "wave-eq-sim - simulates the classical wave equation using rust + vulkan";
-        opt pixel_size:f32=1.0, desc:"set the pixel size";
+        opt pixel_size:f32=0.25, desc:"set the pixel size";
         opt actor_count:u32=1000000, desc: "number of actors";
     }
     .parse_or_exit();
@@ -243,6 +243,8 @@ fn main() -> Result<()> {
         width: (dimensions[0] as f32 / pixel_size) as u32,
         height: (dimensions[1] as f32 / pixel_size) as u32,
     };
+
+    dbg!(phero_map_dims);
 
     let phero_map_1 = StorageImage::with_usage(
         device.clone(),
@@ -477,8 +479,8 @@ fn main() -> Result<()> {
                 {
                     let mut nav_delta = (0., 0.);
 
-                    const ZONE_SIZE: f32 = 0.03;
-                    const NAV_SPEED: f32 = 0.8;
+                    const ZONE_SIZE: f32 = 0.01;
+                    const NAV_SPEED: f32 = 0.5;
 
                     if mouse_pos[0] < ZONE_SIZE {
                         nav_delta.0 -= 1.;
@@ -496,8 +498,10 @@ fn main() -> Result<()> {
                         nav_delta.1 += 1.;
                     }
 
-                    zoom_pos[0] = zoom_pos[0] + nav_delta.0 * NAV_SPEED * delta_time / zoom;
-                    zoom_pos[1] = zoom_pos[1] + nav_delta.1 * NAV_SPEED * delta_time / zoom;
+                    zoom_pos[0] += nav_delta.0 * NAV_SPEED * delta_time / zoom;
+                    zoom_pos[1] += nav_delta.1 * NAV_SPEED * delta_time / zoom
+                        * dimensions[0] as f32
+                        / dimensions[1] as f32;
                 }
 
                 if recreate_swapchain {
