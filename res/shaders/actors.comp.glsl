@@ -73,13 +73,14 @@ void init_actors() {
 
 void main() {
 
-  
-    if(gl_GlobalInvocationID.x > u.actor_count) return;
-
     if (u.init) {
         init_actors();
         return;
     }
+  
+    if(gl_GlobalInvocationID.x > u.actor_count) return;
+
+   
    
     Actor a = actor_data[gl_GlobalInvocationID.x];
 
