@@ -130,7 +130,7 @@ fn create_fullscreen_window(
 fn main() -> Result<()> {
     let (args, _) = opts! {
         synopsis "wave-eq-sim - simulates the classical wave equation using rust + vulkan";
-        opt pixel_size:f32=0.25, desc:"set the pixel size";
+        opt pixel_size:f32=0.5, desc:"set the pixel size";
         opt actor_count:u32=1000000, desc: "number of actors";
     }
     .parse_or_exit();
@@ -390,6 +390,7 @@ fn main() -> Result<()> {
     let mut turn_speed: f32 = 20.;
     let mut turn_gamma: f32 = 0.0;
     let mut randomness: f32 = 2.0;
+    let mut init_gamma: f32 = 0.5;
 
     let mut hue: f32 = 0.;
     let mut gamma: f32 = 0.8;
@@ -617,6 +618,7 @@ fn main() -> Result<()> {
                         init_radius,
                         relative_angle: relative_angle / 360. * 2. * consts::PI,
                         random_angle: random_angle / 360. * 2. * consts::PI,
+                        init_gamma,
                     })
                     .unwrap();
 
@@ -755,6 +757,7 @@ fn main() -> Result<()> {
 
                     ui.indent(3, |ui| {
                         ui.add(Slider::f32(&mut init_radius, 0.0..=1.0).text("Radius"));
+                        ui.add(Slider::f32(&mut init_gamma, 0.0..=2.0).text("Radial Distribution"));
                         ui.add(
                             Slider::f32(&mut relative_angle, 0.0..=360.)
                                 .text("Relative Angle")

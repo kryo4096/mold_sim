@@ -31,6 +31,7 @@ layout(set=0, binding = 2) uniform Data {
     float init_radius;
     float relative_angle;
     float random_angle;
+    float init_gamma;
 } u;
 
 
@@ -63,8 +64,10 @@ void init_actors() {
     Actor actor;
 
     float angle = float(gl_GlobalInvocationID.x) / float(u.actor_count) * 64 * M_PI;
+
+    float rand =  random(1337);
     
-    actor.position = min(max(vec2(cos(angle), sin(angle)) * bounds.y * random(1337) * u.init_radius * 0.5 + bounds / 2, vec2(0)), vec2(bounds));
+    actor.position = min(max(vec2(cos(angle), sin(angle)) * bounds.y * pow(0.0001 + rand * (1-0.0001), u.init_gamma) * u.init_radius * 0.5 + bounds / 2, vec2(0)), vec2(bounds));
 
     actor.angle = angle + u.relative_angle + u.random_angle * (random(2342) - 0.5);
     
