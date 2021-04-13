@@ -135,6 +135,10 @@ fn main() -> Result<()> {
     }
     .parse_or_exit();
 
+    if std::fs::read_dir("./mold-pictures").is_err() {
+        std::fs::create_dir("./mold-pictures").expect("failed to create picture folder");
+    }
+
     let pixel_size: f32 = args.pixel_size;
 
     let actor_count = args.actor_count;
@@ -321,6 +325,29 @@ fn main() -> Result<()> {
             .build(device.clone())?,
     );
 
+    let screenshot_render_pass = Arc::new(vulkano::single_pass_renderpass!(device.clone(),
+        attachments: {
+            color: {
+                load: Clear,
+                store: Store,
+                format: swapchain.format(),
+                samples: 1,
+            }
+        },
+        pass: {color: [color], depth_stencil: {}}
+    )?);
+
+    let screenshot_pipeline = Arc::new(
+        GraphicsPipeline::start()
+            .vertex_input_single_buffer::<Vertex>()
+            .vertex_shader(vertex_shader.main_entry_point(), ())
+            .triangle_list()
+            .viewports_dynamic_scissors_irrelevant(1)
+            .fragment_shader(fragment_shader.main_entry_point(), ())
+            .render_pass(Subpass::from(screenshot_render_pass.clone(), 0).unwrap())
+            .build(device.clone())?,
+    );
+
     let mut egui_platform = Platform::new(PlatformDescriptor {
         physical_width: dimensions[0],
         physical_height: dimensions[1],
@@ -410,6 +437,8 @@ fn main() -> Result<()> {
     let mut time_step = 0.01;
 
     let mut delta_time = 0.0;
+
+    let mut create_screenshot = false;
 
     events_loop.run(move |event, _, control_flow| {
         egui_platform.handle_event(&event);
@@ -503,6 +532,9 @@ fn main() -> Result<()> {
                     zoom_pos[1] += nav_delta.1 * NAV_SPEED * delta_time / zoom
                         * dimensions[0] as f32
                         / dimensions[1] as f32;
+
+                    zoom_pos[0] = zoom_pos[0].clamp(0.5 / zoom, 1. -0.5 / zoom);
+                    zoom_pos[1] = zoom_pos[1].clamp(0.5 / zoom, 1. -0.5 / zoom);
                 }
 
                 if recreate_swapchain {
@@ -690,37 +722,35 @@ fn main() -> Result<()> {
 
                 egui::Window::new("Settings").show(&egui_platform.context(), |ui| {
                     ui.heading("General");
-                    ui.indent(1, |ui| {
+                
                         ui.add(
                             Slider::u32(&mut actor_count, 0..=args.actor_count)
                                 .logarithmic(true)
                                 .text("Actor Count"),
                         );
-                    });
+                    
 
                     ui.advance_cursor(10.);
 
                     ui.heading("Pheromones");
 
-                    ui.indent(1, |ui| {
                         ui.add(
                             Slider::f32(&mut diffusion_constant, 0.0..=20.0)
                                 .text("Diffusion Constant"),
                         );
 
                         ui.add(
-                            Slider::f32(&mut dissipation_constant, 0.0..=20.0)
+                            Slider::f32(&mut dissipation_constant, 0.0..=1000.0)
+                                .logarithmic(true)
                                 .text("Dissipation Constant"),
                         );
 
-                        ui.add(Slider::f32(&mut phero_strength, 0.0..=200.0).text("Strength"));
-                    });
-
+                        ui.add(Slider::f32(&mut phero_strength, 0.0..=75.0).text("Strength"));
+                    
                     ui.advance_cursor(10.);
 
                     ui.heading("Actor Sensors");
 
-                    ui.indent(1, |ui| {
                         ui.add(
                             Slider::f32(&mut sensor_angle, 15.0..=90.0)
                                 .text("Angle")
@@ -728,34 +758,32 @@ fn main() -> Result<()> {
                         );
                         ui.add(Slider::f32(&mut sensor_distance, 1.0..=10.).text("Distance"));
                         ui.add(Slider::i32(&mut sensor_size, 1..=6).text("Size"));
-                    });
-
+                  
                     ui.advance_cursor(10.);
 
                     ui.heading("Actor Movement");
 
-                    ui.indent(2, |ui| {
                         ui.add(Slider::f32(&mut actor_speed, 10.0..=150.).text("Speed"));
                         ui.add(Slider::f32(&mut turn_speed, 0.0..=100.).text("Turn Speed"));
                         ui.add(Slider::f32(&mut turn_gamma, -2.0..=2.0).text("Turn Gamma"));
                         ui.add(Slider::f32(&mut randomness, 0.0..=10.).text("Randomness"));
-                    });
+                   
 
                     ui.advance_cursor(10.);
 
                     ui.heading("Visual");
 
-                    ui.indent(3, |ui| {
+      
                         ui.add(Slider::f32(&mut hue, 0.0..=1.0).text("Hue"));
                         ui.add(Slider::f32(&mut gamma, 0.1..=1.4).text("Gamma"));
                         ui.add(Slider::f32(&mut brightness, 1.0..=20.0).text("Brightness"));
-                    });
+                    
 
                     ui.advance_cursor(10.);
 
                     ui.heading("Initialization");
 
-                    ui.indent(3, |ui| {
+              
                         ui.add(Slider::f32(&mut init_radius, 0.0..=1.0).text("Radius"));
                         ui.add(Slider::f32(&mut init_gamma, 0.0..=2.0).text("Radial Distribution"));
                         ui.add(
@@ -768,7 +796,18 @@ fn main() -> Result<()> {
                                 .text("Random Angle")
                                 .suffix("°"),
                         );
-                    });
+                    
+
+                    ui.advance_cursor(10.);
+
+                    ui.heading("File");
+              
+                        ui.add(egui::Button::new("Save Image..." ));
+              
+
+
+
+                    ui.heading("Tips");
 
                     ui.label("Press R to reset the Simulation and apply initialization Settings!");
                 });
