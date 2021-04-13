@@ -206,13 +206,6 @@ fn main() -> Result<()> {
         std::array::IntoIter::new(SCREEN_QUAD),
     )?;
 
-    #[derive(Default)]
-    struct Actor {
-        position: [f32; 2],
-        angle: f32,
-        value: f32,
-    }
-
     let actor_buffer = CpuAccessibleBuffer::from_iter(
         device.clone(),
         BufferUsage {
@@ -220,11 +213,18 @@ fn main() -> Result<()> {
             ..BufferUsage::none()
         },
         false,
-        (0..actor_count).map(|_| Actor::default()),
+        (0..actor_count).map(|_| actors_cs::ty::Actor {
+            angle: 0.,
+            position: [0., 0.],
+            _dummy0: [0; 4],
+        }),
     )?;
 
     let phero_cs = phero_cs::Shader::load(device.clone()).expect("failed to create shader");
     let actors_cs = actors_cs::Shader::load(device.clone()).expect("failed to create shader");
+
+    let cs_actors_uniform_buffer =
+        CpuBufferPool::<actors_cs::ty::Data>::new(device.clone(), BufferUsage::all());
 
     let actors_compute_pipeline = Arc::new(
         ComputePipeline::new(device.clone(), &actors_cs.main_entry_point(), &(), None)
@@ -381,13 +381,20 @@ fn main() -> Result<()> {
     let mut sensor_size: i32 = 4;
     let mut actor_speed: f32 = 100.;
     let mut phero_strength: f32 = 20.;
-    let mut turn_speed: f32 = 10.;
-    let mut turn_gamma: f32 = 0.3;
+    let mut turn_speed: f32 = 20.;
+    let mut turn_gamma: f32 = 0.0;
     let mut randomness: f32 = 2.0;
 
     let mut hue: f32 = 0.;
     let mut gamma: f32 = 0.8;
     let mut brightness: f32 = 5.;
+
+    let mut init_radius = 0.5;
+
+    let mut relative_angle = 0.0;
+    let mut random_angle = 360.;
+
+    let mut actor_count = args.actor_count;
 
     events_loop.run(move |event, _, control_flow| {
         egui_platform.handle_event(&event);
@@ -520,20 +527,6 @@ fn main() -> Result<()> {
                     time,
                 };
 
-                let actors_compute_uniforms = actors_cs::ty::PushConstantData {
-                    delta_time,
-                    time,
-                    init: clear_images as _,
-                    sensor_angle: sensor_angle / 360. * 2. * consts::PI,
-                    sensor_distance,
-                    sensor_size,
-                    actor_speed,
-                    phero_strength,
-                    turn_speed,
-                    turn_gamma,
-                    randomness,
-                };
-
                 let render_uniforms = fs_uniform_buffer
                     .next(fs::ty::Data {
                         hue,
@@ -558,11 +551,33 @@ fn main() -> Result<()> {
                 )
                 .unwrap();
 
+                let actors_uniforms = cs_actors_uniform_buffer
+                    .next(actors_cs::ty::Data {
+                        actor_count,
+                        delta_time,
+                        time,
+                        init: clear_images as _,
+                        sensor_angle: sensor_angle / 360. * 2. * consts::PI,
+                        sensor_distance,
+                        sensor_size,
+                        actor_speed,
+                        phero_strength,
+                        turn_speed,
+                        turn_gamma,
+                        randomness,
+                        init_radius,
+                        relative_angle: relative_angle / 360. * 2. * consts::PI,
+                        random_angle: random_angle / 360. * 2. * consts::PI,
+                    })
+                    .unwrap();
+
                 let actors_compute_set = Arc::new(
                     PersistentDescriptorSet::start(actors_compute_layout.clone())
                         .add_image(back_image.clone())
                         .unwrap()
                         .add_buffer(actor_buffer.clone())
+                        .unwrap()
+                        .add_buffer(actors_uniforms)
                         .unwrap()
                         .build()
                         .unwrap(),
@@ -570,10 +585,10 @@ fn main() -> Result<()> {
 
                 builder
                     .dispatch(
-                        [actor_count / 32 + 1, 1, 1],
+                        [actor_count / 64 + 1, 1, 1],
                         actors_compute_pipeline.clone(),
                         actors_compute_set.clone(),
-                        actors_compute_uniforms,
+                        (),
                         vec![],
                     )
                     .unwrap();
@@ -626,6 +641,17 @@ fn main() -> Result<()> {
                 egui_platform.begin_frame();
 
                 egui::Window::new("Settings").show(&egui_platform.context(), |ui| {
+                    ui.heading("General");
+                    ui.indent(1, |ui| {
+                        ui.add(
+                            Slider::u32(&mut actor_count, 0..=args.actor_count)
+                                .logarithmic(true)
+                                .text("Actor Count"),
+                        );
+                    });
+
+                    ui.advance_cursor(10.);
+
                     ui.heading("Pheromones");
 
                     ui.indent(1, |ui| {
@@ -645,9 +671,14 @@ fn main() -> Result<()> {
                     ui.advance_cursor(10.);
 
                     ui.heading("Actors");
+
                     ui.indent(1, |ui| {
                         ui.heading("Sensor");
-                        ui.add(Slider::f32(&mut sensor_angle, 15.0..=90.0).text("Angle"));
+                        ui.add(
+                            Slider::f32(&mut sensor_angle, 15.0..=90.0)
+                                .text("Angle")
+                                .suffix("°"),
+                        );
                         ui.add(Slider::f32(&mut sensor_distance, 1.0..=10.).text("Distance"));
                         ui.add(Slider::i32(&mut sensor_size, 1..=6).text("Size"));
                     });
@@ -655,7 +686,7 @@ fn main() -> Result<()> {
                     ui.indent(2, |ui| {
                         ui.heading("Movement");
                         ui.add(Slider::f32(&mut actor_speed, 10.0..=150.).text("Speed"));
-                        ui.add(Slider::f32(&mut turn_speed, 0.0..=15.).text("Turn Speed"));
+                        ui.add(Slider::f32(&mut turn_speed, 0.0..=100.).text("Turn Speed"));
                         ui.add(Slider::f32(&mut turn_gamma, -2.0..=2.0).text("Turn Gamma"));
                         ui.add(Slider::f32(&mut randomness, 0.0..=10.).text("Randomness"));
                     });
@@ -672,7 +703,23 @@ fn main() -> Result<()> {
 
                     ui.advance_cursor(10.);
 
-                    ui.label("Press R to reset the Simulation!");
+                    ui.heading("Initialization");
+
+                    ui.indent(3, |ui| {
+                        ui.add(Slider::f32(&mut init_radius, 0.0..=1.0).text("Radius"));
+                        ui.add(
+                            Slider::f32(&mut relative_angle, 0.0..=360.)
+                                .text("Relative Angle")
+                                .suffix("°"),
+                        );
+                        ui.add(
+                            Slider::f32(&mut random_angle, 0.0..=360.0)
+                                .text("Random Angle")
+                                .suffix("°"),
+                        );
+                    });
+
+                    ui.label("Press R to reset the Simulation and apply initialization Settings!");
                 });
 
                 let (_output, clipped_shapes) = egui_platform.end_frame();

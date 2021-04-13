@@ -3,15 +3,20 @@
 #define M_PI 3.1415926535897932384626433832795
 
 
-layout(local_size_x = 32, local_size_y = 1, local_size_z = 1) in;
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 
 struct Actor {
     vec2 position;
     float angle;
 };
 
+layout(set = 0, binding = 0, rg32f) uniform image2D back_buf;
+layout(set = 0, binding = 1, std430) buffer buf {
+    Actor[] actor_data;
+};
 
-layout(push_constant) uniform PushConstantData {
+layout(set=0, binding = 2) uniform Data {
+    uint actor_count;
     float delta_time;
     float time;
     bool init;
@@ -23,13 +28,11 @@ layout(push_constant) uniform PushConstantData {
     float turn_speed;
     float turn_gamma;
     float randomness;
+    float init_radius;
+    float relative_angle;
+    float random_angle;
 } u;
 
-
-layout(set = 0, binding = 0, rg32f) uniform image2D back_buf;
-layout(set = 0, binding = 1, std430) buffer buf {
-    Actor[] actor_data;
-};
 
 float rand(vec2 n) { 
 	return fract(sin(dot(n, vec2(12.9898, 4.1414))) * 43758.5453);
@@ -59,10 +62,11 @@ void init_actors() {
     ivec2 bounds = imageSize(back_buf);
     Actor actor;
 
-    float angle = float(gl_GlobalInvocationID.x) / float(actor_data.length()) * 100 * M_PI;
+    float angle = float(gl_GlobalInvocationID.x) / float(u.actor_count) * 64 * M_PI;
     
-    actor.position = vec2(cos(angle), sin(angle)) * bounds.y * random(1337) * 0.01 + bounds / 2;
-    actor.angle = random(2342) * M_PI * 2;
+    actor.position = min(max(vec2(cos(angle), sin(angle)) * bounds.y * random(1337) * u.init_radius * 0.5 + bounds / 2, vec2(0)), vec2(bounds));
+
+    actor.angle = angle + u.relative_angle + u.random_angle * (random(2342) - 0.5);
     
     actor_data[gl_GlobalInvocationID.x] = actor;
 }
@@ -70,6 +74,7 @@ void init_actors() {
 void main() {
 
   
+    if(gl_GlobalInvocationID.x > u.actor_count) return;
 
     if (u.init) {
         init_actors();
