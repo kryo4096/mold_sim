@@ -32,7 +32,7 @@ void main() {
 
     //f_color = vec4(x / scale);
 
-    f_color = x/scale * vec4(hsv2rgb(vec3(u.hue + 0.1 * x / scale, 1.0, 1.0)), 1.0);
+    f_color = vec4(x/scale * hsv2rgb(vec3(u.hue + 0.1 * x / scale, 1.0, 1.0)), 1.0);
     if(abs(x) > scale) {
         f_color.rgb += vec3(tanh((abs(x) - scale)/scale));
     }

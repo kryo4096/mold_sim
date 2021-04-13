@@ -330,7 +330,7 @@ fn main() -> Result<()> {
             color: {
                 load: Clear,
                 store: Store,
-                format: swapchain.format(),
+                format: Format::R8G8B8A8Unorm,
                 samples: 1,
             }
         },
@@ -438,7 +438,7 @@ fn main() -> Result<()> {
 
     let mut delta_time = 0.0;
 
-    let mut create_screenshot = false;
+    let mut take_screenshot = false;
 
     events_loop.run(move |event, _, control_flow| {
         egui_platform.handle_event(&event);
@@ -533,8 +533,8 @@ fn main() -> Result<()> {
                         * dimensions[0] as f32
                         / dimensions[1] as f32;
 
-                    zoom_pos[0] = zoom_pos[0].clamp(0.5 / zoom, 1. -0.5 / zoom);
-                    zoom_pos[1] = zoom_pos[1].clamp(0.5 / zoom, 1. -0.5 / zoom);
+                    zoom_pos[0] = zoom_pos[0].clamp(0.5 / zoom, 1. - 0.5 / zoom);
+                    zoom_pos[1] = zoom_pos[1].clamp(0.5 / zoom, 1. - 0.5 / zoom);
                 }
 
                 if recreate_swapchain {
@@ -722,90 +722,80 @@ fn main() -> Result<()> {
 
                 egui::Window::new("Settings").show(&egui_platform.context(), |ui| {
                     ui.heading("General");
-                
-                        ui.add(
-                            Slider::u32(&mut actor_count, 0..=args.actor_count)
-                                .logarithmic(true)
-                                .text("Actor Count"),
-                        );
-                    
+
+                    ui.add(
+                        Slider::u32(&mut actor_count, 0..=args.actor_count)
+                            .logarithmic(true)
+                            .text("Actor Count"),
+                    );
 
                     ui.advance_cursor(10.);
 
                     ui.heading("Pheromones");
 
-                        ui.add(
-                            Slider::f32(&mut diffusion_constant, 0.0..=20.0)
-                                .text("Diffusion Constant"),
-                        );
+                    ui.add(
+                        Slider::f32(&mut diffusion_constant, 0.0..=20.0).text("Diffusion Constant"),
+                    );
 
-                        ui.add(
-                            Slider::f32(&mut dissipation_constant, 0.0..=1000.0)
-                                .logarithmic(true)
-                                .text("Dissipation Constant"),
-                        );
+                    ui.add(
+                        Slider::f32(&mut dissipation_constant, 0.0..=1000.0)
+                            .logarithmic(true)
+                            .text("Dissipation Constant"),
+                    );
 
-                        ui.add(Slider::f32(&mut phero_strength, 0.0..=75.0).text("Strength"));
-                    
+                    ui.add(Slider::f32(&mut phero_strength, 0.0..=75.0).text("Strength"));
+
                     ui.advance_cursor(10.);
 
                     ui.heading("Actor Sensors");
 
-                        ui.add(
-                            Slider::f32(&mut sensor_angle, 15.0..=90.0)
-                                .text("Angle")
-                                .suffix("°"),
-                        );
-                        ui.add(Slider::f32(&mut sensor_distance, 1.0..=10.).text("Distance"));
-                        ui.add(Slider::i32(&mut sensor_size, 1..=6).text("Size"));
-                  
+                    ui.add(
+                        Slider::f32(&mut sensor_angle, 15.0..=90.0)
+                            .text("Angle")
+                            .suffix("°"),
+                    );
+                    ui.add(Slider::f32(&mut sensor_distance, 1.0..=10.).text("Distance"));
+                    ui.add(Slider::i32(&mut sensor_size, 1..=6).text("Size"));
+
                     ui.advance_cursor(10.);
 
                     ui.heading("Actor Movement");
 
-                        ui.add(Slider::f32(&mut actor_speed, 10.0..=150.).text("Speed"));
-                        ui.add(Slider::f32(&mut turn_speed, 0.0..=100.).text("Turn Speed"));
-                        ui.add(Slider::f32(&mut turn_gamma, -2.0..=2.0).text("Turn Gamma"));
-                        ui.add(Slider::f32(&mut randomness, 0.0..=10.).text("Randomness"));
-                   
+                    ui.add(Slider::f32(&mut actor_speed, 10.0..=150.).text("Speed"));
+                    ui.add(Slider::f32(&mut turn_speed, 0.0..=100.).text("Turn Speed"));
+                    ui.add(Slider::f32(&mut turn_gamma, -2.0..=2.0).text("Turn Gamma"));
+                    ui.add(Slider::f32(&mut randomness, 0.0..=10.).text("Randomness"));
 
                     ui.advance_cursor(10.);
 
                     ui.heading("Visual");
 
-      
-                        ui.add(Slider::f32(&mut hue, 0.0..=1.0).text("Hue"));
-                        ui.add(Slider::f32(&mut gamma, 0.1..=1.4).text("Gamma"));
-                        ui.add(Slider::f32(&mut brightness, 1.0..=20.0).text("Brightness"));
-                    
+                    ui.add(Slider::f32(&mut hue, 0.0..=1.0).text("Hue"));
+                    ui.add(Slider::f32(&mut gamma, 0.1..=1.4).text("Gamma"));
+                    ui.add(Slider::f32(&mut brightness, 1.0..=20.0).text("Brightness"));
 
                     ui.advance_cursor(10.);
 
                     ui.heading("Initialization");
 
-              
-                        ui.add(Slider::f32(&mut init_radius, 0.0..=1.0).text("Radius"));
-                        ui.add(Slider::f32(&mut init_gamma, 0.0..=2.0).text("Radial Distribution"));
-                        ui.add(
-                            Slider::f32(&mut relative_angle, 0.0..=360.)
-                                .text("Relative Angle")
-                                .suffix("°"),
-                        );
-                        ui.add(
-                            Slider::f32(&mut random_angle, 0.0..=360.0)
-                                .text("Random Angle")
-                                .suffix("°"),
-                        );
-                    
+                    ui.add(Slider::f32(&mut init_radius, 0.0..=1.0).text("Radius"));
+                    ui.add(Slider::f32(&mut init_gamma, 0.0..=2.0).text("Radial Distribution"));
+                    ui.add(
+                        Slider::f32(&mut relative_angle, 0.0..=360.)
+                            .text("Relative Angle")
+                            .suffix("°"),
+                    );
+                    ui.add(
+                        Slider::f32(&mut random_angle, 0.0..=360.0)
+                            .text("Random Angle")
+                            .suffix("°"),
+                    );
 
                     ui.advance_cursor(10.);
 
                     ui.heading("File");
-              
-                        ui.add(egui::Button::new("Save Image..." ));
-              
 
-
+                    take_screenshot = ui.button("Save Image").clicked();
 
                     ui.heading("Tips");
 
@@ -826,6 +816,87 @@ fn main() -> Result<()> {
 
                 builder.end_render_pass().unwrap();
 
+                let mut screenshot_buf = None;
+
+                if take_screenshot {
+                    let vs_uniforms = vs_uniform_buffer
+                        .next(vs::ty::Data {
+                            zoom_pos: [0.5, 0.5],
+                            zoom: 1.,
+                        })
+                        .unwrap();
+
+                    let vs_set = Arc::new(
+                        PersistentDescriptorSet::start(vs_layout.clone())
+                            .add_buffer(vs_uniforms)
+                            .unwrap()
+                            .build()
+                            .unwrap(),
+                    );
+
+                    let screenshot_image = StorageImage::with_usage(
+                        device.clone(),
+                        phero_map_dims,
+                        Format::R8G8B8A8Unorm,
+                        ImageUsage {
+                            transfer_source: true,
+                            color_attachment: true,
+                            ..ImageUsage::none()
+                        },
+                        Some(queue.family()),
+                    )
+                    .unwrap();
+
+                    let buf = CpuAccessibleBuffer::from_iter(
+                        device.clone(),
+                        BufferUsage::all(),
+                        false,
+                        (0..phero_map_dims.width() * phero_map_dims.height() * 4).map(|_| 0u8),
+                    )
+                    .expect("failed to create buffer");
+
+                    screenshot_buf = Some(buf.clone());
+
+                    let screenshot_frame_buffer = Arc::new(
+                        Framebuffer::start(screenshot_render_pass.clone())
+                            .add(screenshot_image.clone())
+                            .unwrap()
+                            .build()
+                            .unwrap(),
+                    );
+
+                    builder
+                        .begin_render_pass(
+                            screenshot_frame_buffer,
+                            SubpassContents::Inline,
+                            vec![[0.0; 4].into()],
+                        )
+                        .unwrap()
+                        .draw(
+                            screenshot_pipeline.clone(),
+                            &DynamicState {
+                                viewports: Some(vec![Viewport {
+                                    origin: [0., 0.],
+                                    dimensions: [
+                                        phero_map_dims.width() as f32,
+                                        phero_map_dims.height() as f32,
+                                    ],
+                                    depth_range: 0.0..1.0,
+                                }]),
+                                ..DynamicState::none()
+                            },
+                            vertex_buffer.clone(),
+                            (fs_set, vs_set),
+                            (),
+                            vec![],
+                        )
+                        .unwrap()
+                        .end_render_pass()
+                        .unwrap()
+                        .copy_image_to_buffer(screenshot_image, buf)
+                        .unwrap();
+                }
+
                 let command_buffer = builder.build().unwrap();
 
                 let future = previous_frame_end
@@ -841,6 +912,25 @@ fn main() -> Result<()> {
 
                 match future {
                     Ok(future) => {
+                        if take_screenshot {
+                            future.wait(None).unwrap();
+                            let buf = screenshot_buf.take().unwrap();
+                            let buffer_content = buf.read().unwrap();
+
+                            let image = image::ImageBuffer::<image::Rgba<u8>, _>::from_raw(
+                                phero_map_dims.width(),
+                                phero_map_dims.height(),
+                                &buffer_content[..],
+                            )
+                            .unwrap();
+
+                            let local: chrono::DateTime<chrono::Local> = chrono::Local::now();
+
+                            let filename = format!("mold-pictures/mold-{}.png", local.to_rfc3339());
+
+                            image.save(&filename).unwrap();
+                        }
+
                         previous_frame_end = Some(future.boxed());
                     }
                     Err(FlushError::OutOfDate) => {

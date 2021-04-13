@@ -17,3 +17,5 @@ rand = "0.8"
 egui = "0.10"
 egui_winit_platform = "0.5"
 egui_vulkano = {git = "https://github.com/derivator/egui_vulkano", branch = "main"}
+image = "0.23"
+chrono = "0.4"
