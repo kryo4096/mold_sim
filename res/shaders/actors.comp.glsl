@@ -3,7 +3,7 @@
 #define M_PI 3.1415926535897932384626433832795
 
 
-layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+layout(local_size_x = 128, local_size_y = 1, local_size_z = 1) in;
 
 struct Actor {
     vec2 position;
@@ -22,7 +22,6 @@ layout(set=0, binding = 2) uniform Data {
     bool init;
     float sensor_angle;
     float sensor_distance;     
-    int sensor_size;
     float actor_speed;
     float phero_strength;
     float turn_speed;
@@ -34,25 +33,20 @@ layout(set=0, binding = 2) uniform Data {
     float init_gamma;
 } u;
 
-
-float rand(vec2 n) { 
-	return fract(sin(dot(n, vec2(12.9898, 4.1414))) * 43758.5453);
-}
-
 float random(float seed) {
-    return rand(vec2(gl_GlobalInvocationID.x / 1000., u.time + seed));
+   return fract(sin(dot(vec2(gl_GlobalInvocationID.x / 1000., u.time + seed), vec2(12.9898, 4.1414))) * 43758.5453);
 }
 
-float sense(vec2 position, int size) {
+float sense(vec2 position) {
     float r = 0;
 
-    for(int x = -size / 2; x <= size / 2; x++) {
-        for(int y = -size / 2; y <= size / 2; y++) {
-            r += imageLoad(back_buf, ivec2(position + vec2(x,y))).x;
-        }
-    }
+    r += imageLoad(back_buf, ivec2(position)).x;
+    r += imageLoad(back_buf, ivec2(position) + ivec2(1,0)).x;
+    r += imageLoad(back_buf, ivec2(position) + ivec2(-1,0)).x;
+    r += imageLoad(back_buf, ivec2(position) + ivec2(0,1)).x;
+    r += imageLoad(back_buf, ivec2(position) + ivec2(0,-1)).x;
 
-    return r;
+    return r / 5.;
 }
 
 vec2 astep(vec2 position, float angle, float step_size) {
@@ -83,27 +77,27 @@ void main() {
   
     if(gl_GlobalInvocationID.x > u.actor_count) return;
 
-   
+    
    
     Actor a = actor_data[gl_GlobalInvocationID.x];
 
-    float ls = sense(astep(a.position, a.angle + u.sensor_angle, u.sensor_distance), u.sensor_size);
-    float fs = sense(astep(a.position, a.angle, u.sensor_distance), u.sensor_size);
-    float rs = sense(astep(a.position, a.angle - u.sensor_angle, u.sensor_distance), u.sensor_size);
+    float ls = sense(astep(a.position, a.angle + u.sensor_angle, u.sensor_distance));
+    float fs = sense(astep(a.position, a.angle, u.sensor_distance));
+    float rs = sense(astep(a.position, a.angle - u.sensor_angle, u.sensor_distance));
 
     float delta_angle = 0;
+
+    float gamma_mod = pow(rs + ls, u.turn_gamma);
 
     if(fs > ls && fs > rs) {
         delta_angle = 0;
     } else if (fs < ls && fs < rs) {
-        delta_angle = (random(13132) - 0.5) * 4 * (rs + ls) * 0.02;
+        delta_angle = (random(200) - 0.5) * u.randomness;
     } else if (rs > ls) {
-        delta_angle = -pow(rs, u.turn_gamma);
+        delta_angle = -gamma_mod;
     } else if (ls > rs) {
-        delta_angle = pow(ls, u.turn_gamma);
+        delta_angle = gamma_mod;
     }
-
-    delta_angle += (random(131232) - 0.5) * u.randomness * 2;
 
     a.angle += delta_angle * u.delta_time * u.turn_speed;
 

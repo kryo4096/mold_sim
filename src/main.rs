@@ -1,6 +1,6 @@
 use std::sync::Arc;
 use std::vec::Vec;
-use std::{error::Error, time::Instant};
+use std::{error::Error, time::{Duration, Instant}};
 use std::{f32::consts, mem};
 
 use rand::prelude::*;
@@ -94,8 +94,6 @@ const SCREEN_QUAD: [Vertex; 6] = [
     Vertex::new(1., 1.),
 ];
 
-const TIME_STEPS_PER_FRAME: u32 = 10;
-
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
 
 fn create_fullscreen_window(
@@ -131,7 +129,7 @@ fn main() -> Result<()> {
     let (args, _) = opts! {
         synopsis "wave-eq-sim - simulates the classical wave equation using rust + vulkan";
         opt pixel_size:f32=0.5, desc:"set the pixel size";
-        opt actor_count:u32=1000000, desc: "number of actors";
+        opt actor_count:u32=2000000, desc: "number of actors";
     }
     .parse_or_exit();
 
@@ -190,7 +188,7 @@ fn main() -> Result<()> {
         Swapchain::new(
             device.clone(),
             surface.clone(),
-            caps.min_image_count,
+            caps.min_image_count.max(3),
             format,
             dimensions,
             1,
@@ -411,7 +409,6 @@ fn main() -> Result<()> {
 
     let mut sensor_angle: f32 = 70.;
     let mut sensor_distance: f32 = 5.;
-    let mut sensor_size: i32 = 4;
     let mut actor_speed: f32 = 100.;
     let mut phero_strength: f32 = 20.;
     let mut turn_speed: f32 = 20.;
@@ -590,7 +587,7 @@ fn main() -> Result<()> {
                 let vs_layout = pipeline.layout().descriptor_set_layout(1).unwrap();
 
                 let phero_compute_uniforms = phero_cs::ty::PushConstantData {
-                    delta_time: time_step / TIME_STEPS_PER_FRAME as f32,
+                    delta_time: time_step,
                     init_image: clear_images as _,
                     diffusion_constant,
                     dissipation_constant,
@@ -641,7 +638,6 @@ fn main() -> Result<()> {
                         init: clear_images as _,
                         sensor_angle: sensor_angle / 360. * 2. * consts::PI,
                         sensor_distance,
-                        sensor_size,
                         actor_speed,
                         phero_strength,
                         turn_speed,
@@ -668,7 +664,7 @@ fn main() -> Result<()> {
 
                 builder
                     .dispatch(
-                        [actor_count / 64 + 1, 1, 1],
+                        [actor_count / 128 + 1, 1, 1],
                         actors_compute_pipeline.clone(),
                         actors_compute_set.clone(),
                         (),
@@ -688,8 +684,8 @@ fn main() -> Result<()> {
                 builder
                     .dispatch(
                         [
-                            phero_map_dims.width() / 8 + 1,
-                            phero_map_dims.height() / 8 + 1,
+                            phero_map_dims.width() / 8,
+                            phero_map_dims.height() / 8,
                             1,
                         ],
                         phero_compute_pipeline.clone(),
@@ -734,11 +730,11 @@ fn main() -> Result<()> {
                     ui.heading("Pheromones");
 
                     ui.add(
-                        Slider::f32(&mut diffusion_constant, 0.0..=20.0).text("Diffusion Constant"),
+                        Slider::f32(&mut diffusion_constant, 0.0..=10.0).text("Diffusion Constant"),
                     );
 
                     ui.add(
-                        Slider::f32(&mut dissipation_constant, 0.0..=1000.0)
+                        Slider::f32(&mut dissipation_constant, 0.0..=100.0)
                             .logarithmic(true)
                             .text("Dissipation Constant"),
                     );
@@ -750,20 +746,19 @@ fn main() -> Result<()> {
                     ui.heading("Actor Sensors");
 
                     ui.add(
-                        Slider::f32(&mut sensor_angle, 15.0..=90.0)
+                        Slider::f32(&mut sensor_angle, 0.0..=90.0)
                             .text("Angle")
                             .suffix("°"),
                     );
                     ui.add(Slider::f32(&mut sensor_distance, 1.0..=10.).text("Distance"));
-                    ui.add(Slider::i32(&mut sensor_size, 1..=6).text("Size"));
 
                     ui.advance_cursor(10.);
 
                     ui.heading("Actor Movement");
 
                     ui.add(Slider::f32(&mut actor_speed, 10.0..=150.).text("Speed"));
-                    ui.add(Slider::f32(&mut turn_speed, 0.0..=100.).text("Turn Speed"));
-                    ui.add(Slider::f32(&mut turn_gamma, -2.0..=2.0).text("Turn Gamma"));
+                    ui.add(Slider::f32(&mut turn_speed, 0.0..=25.).text("Turn Speed"));
+                    ui.add(Slider::f32(&mut turn_gamma, -1.0..=1.0).text("Turn Gamma"));
                     ui.add(Slider::f32(&mut randomness, 0.0..=10.).text("Randomness"));
 
                     ui.advance_cursor(10.);
@@ -910,6 +905,7 @@ fn main() -> Result<()> {
 
                 time += time_step;
 
+
                 match future {
                     Ok(future) => {
                         if take_screenshot {
@@ -926,7 +922,7 @@ fn main() -> Result<()> {
 
                             let local: chrono::DateTime<chrono::Local> = chrono::Local::now();
 
-                            let filename = format!("mold-pictures/mold-{}.png", local.to_rfc3339());
+                            let filename = format!("mold-pictures/mold-{}.png", local.timestamp_millis());
 
                             image.save(&filename).unwrap();
                         }
@@ -943,10 +939,18 @@ fn main() -> Result<()> {
                     }
                 }
 
+               
                 clear_images = false;
+                
+                if delta_time < 1. / 60. {
+                    std::thread::sleep(Duration::from_secs_f32(1. / 60. - delta_time));
+                }
+           
             }
             _ => (),
         }
+
+       
     });
 }
 
