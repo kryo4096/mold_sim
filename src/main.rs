@@ -1,11 +1,14 @@
 use std::sync::Arc;
 use std::vec::Vec;
-use std::{error::Error, time::{Duration, Instant}};
+use std::{
+    error::Error,
+    time::{Duration, Instant},
+};
 use std::{f32::consts, mem};
 
 use rand::prelude::*;
 use vulkano::{
-    buffer::{BufferUsage, CpuAccessibleBuffer, CpuBufferPool},
+    buffer::{BufferUsage, CpuAccessibleBuffer, CpuBufferPool, DeviceLocalBuffer},
     command_buffer::{AutoCommandBufferBuilder, CommandBuffer, DynamicState, SubpassContents},
     descriptor::{descriptor_set::PersistentDescriptorSet, PipelineLayoutAbstract},
     device::{Device, DeviceExtensions, Features},
@@ -211,18 +214,14 @@ fn main() -> Result<()> {
         std::array::IntoIter::new(SCREEN_QUAD),
     )?;
 
-    let actor_buffer = CpuAccessibleBuffer::from_iter(
+    let actor_buffer = DeviceLocalBuffer::<[actors_cs::ty::Actor]>::array(
         device.clone(),
+        args.actor_count as usize,
         BufferUsage {
             storage_buffer: true,
             ..BufferUsage::none()
         },
-        false,
-        (0..actor_count).map(|_| actors_cs::ty::Actor {
-            angle: 0.,
-            position: [0., 0.],
-            _dummy0: [0; 4],
-        }),
+        vec![queue_family],
     )?;
 
     let phero_cs = phero_cs::Shader::load(device.clone()).expect("failed to create shader");
@@ -683,11 +682,7 @@ fn main() -> Result<()> {
                 );
                 builder
                     .dispatch(
-                        [
-                            phero_map_dims.width() / 8,
-                            phero_map_dims.height() / 8,
-                            1,
-                        ],
+                        [phero_map_dims.width() / 8, phero_map_dims.height() / 8, 1],
                         phero_compute_pipeline.clone(),
                         compute_set.clone(),
                         phero_compute_uniforms,
@@ -905,7 +900,6 @@ fn main() -> Result<()> {
 
                 time += time_step;
 
-
                 match future {
                     Ok(future) => {
                         if take_screenshot {
@@ -922,7 +916,8 @@ fn main() -> Result<()> {
 
                             let local: chrono::DateTime<chrono::Local> = chrono::Local::now();
 
-                            let filename = format!("mold-pictures/mold-{}.png", local.timestamp_millis());
+                            let filename =
+                                format!("mold-pictures/mold-{}.png", local.timestamp_millis());
 
                             image.save(&filename).unwrap();
                         }
@@ -939,18 +934,14 @@ fn main() -> Result<()> {
                     }
                 }
 
-               
                 clear_images = false;
-                
+
                 if delta_time < 1. / 60. {
                     std::thread::sleep(Duration::from_secs_f32(1. / 60. - delta_time));
                 }
-           
             }
             _ => (),
         }
-
-       
     });
 }
 
