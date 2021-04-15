@@ -112,7 +112,7 @@ fn create_fullscreen_window(
         .with_inner_size(monitor_size)
         .with_min_inner_size(monitor_size)
         .with_fullscreen(Some(Fullscreen::Borderless(event_loop.primary_monitor())))
-        .with_title("Wave Equation (Click and Drag to apply force to pixels)")
+        .with_title("Mold Simulation")
         .build_vk_surface(&event_loop, instance)?;
 
     let dimensions = surface.window().inner_size().into();
@@ -128,7 +128,7 @@ fn main() -> Result<()> {
     let (args, _) = opts! {
         synopsis "wave-eq-sim - simulates the classical wave equation using rust + vulkan";
         opt pixel_size:f32=0.5, desc:"set the pixel size";
-        opt actor_count:u32=10000000, desc: "number of actors";
+        opt actor_count:u32=100_000_000, desc: "number of actors";
     }
     .parse_or_exit();
 
@@ -195,7 +195,7 @@ fn main() -> Result<()> {
             &queue,
             SurfaceTransform::Identity,
             alpha,
-            PresentMode::Fifo,
+            PresentMode::Immediate,
             FullscreenExclusive::Allowed,
             true,
             ColorSpace::SrgbNonLinear,
@@ -657,15 +657,35 @@ fn main() -> Result<()> {
                         .unwrap(),
                 );
 
-                builder
+                const DISPATCH_SIZE: u32 = 65535;
+
+                let workload = actor_count / 256 + 1;
+
+                let dispatch_no = workload / DISPATCH_SIZE;
+
+                for i in 0..dispatch_no {
+                    builder
                     .dispatch(
-                        [actor_count / 256 + 1, 1, 1],
+                        [DISPATCH_SIZE, 1, 1],
                         actors_compute_pipeline.clone(),
                         actors_compute_set.clone(),
-                        (),
+                        i * DISPATCH_SIZE,
                         vec![],
                     )
                     .unwrap();
+                }
+
+                builder
+                .dispatch(
+                    [workload % DISPATCH_SIZE, 1, 1],
+                    actors_compute_pipeline.clone(),
+                    actors_compute_set.clone(),
+                    dispatch_no * DISPATCH_SIZE,
+                    vec![],
+                )
+                .unwrap();
+
+               
 
                 let compute_set = Arc::new(
                     PersistentDescriptorSet::start(phero_compute_layout.clone())

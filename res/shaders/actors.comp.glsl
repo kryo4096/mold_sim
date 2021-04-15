@@ -1,4 +1,4 @@
-#version 450
+#version 460
 
 #define M_PI 3.1415926535897932384626433832795
 
@@ -14,6 +14,10 @@ layout(set = 0, binding = 0, rg32f) uniform image2D back_buf;
 layout(set = 0, binding = 1, std430) buffer buf {
     Actor[] actor_data;
 };
+
+layout(push_constant) uniform DispatchData{
+    uint offset;
+} d;
 
 layout(set=0, binding = 2) uniform Data {
     uint actor_count;
@@ -33,8 +37,10 @@ layout(set=0, binding = 2) uniform Data {
     float init_gamma;
 } u;
 
+uint index = (256 * d.offset + gl_GlobalInvocationID.x);
+
 float random(float seed) {
-   return fract(sin(dot(vec2(gl_GlobalInvocationID.x / 1000., u.time + seed), vec2(12.9898, 4.1414))) * 43758.5453);
+   return fract(sin(dot(vec2((index) / 1000., u.time + seed), vec2(12.9898, 4.1414))) * 43758.5453);
 }
 
 float sense(vec2 position) {
@@ -57,7 +63,7 @@ void init_actors() {
     ivec2 bounds = imageSize(back_buf);
     Actor actor;
 
-    float angle = float(gl_GlobalInvocationID.x) / float(u.actor_count) * 64 * M_PI;
+    float angle = float(index) * 64 * M_PI / float(u.actor_count);
 
     float rand =  random(1337);
     
@@ -65,7 +71,7 @@ void init_actors() {
 
     actor.angle = angle + u.relative_angle + u.random_angle * (random(2342) - 0.5);
     
-    actor_data[gl_GlobalInvocationID.x] = actor;
+    actor_data[index] = actor;
 }
 
 void main() {
@@ -75,11 +81,11 @@ void main() {
         return;
     }
   
-    if(gl_GlobalInvocationID.x > u.actor_count) return;
+    if(index > u.actor_count) return;
 
     
    
-    Actor a = actor_data[gl_GlobalInvocationID.x];
+    Actor a = actor_data[index];
 
     float ls = sense(astep(a.position, a.angle + u.sensor_angle, u.sensor_distance));
     float fs = sense(astep(a.position, a.angle, u.sensor_distance));
@@ -120,6 +126,6 @@ void main() {
         a.angle = random(134234) * 2 * M_PI;
     }
 
-    actor_data[gl_GlobalInvocationID.x] = a;
+    actor_data[index] = a;
     
 }
