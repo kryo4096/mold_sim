@@ -105,16 +105,12 @@ fn create_fullscreen_window(
 ) -> Result<(EventLoop<()>, Arc<Surface<Window>>, [u32; 2], Capabilities)> {
     let event_loop = EventLoop::new();
 
-    let mode = event_loop
-        .primary_monitor()
-        .ok_or("no monitor found")?
-        .video_modes()
-        .max_by(|m1, m2| Ord::cmp(&m1.size().height, &m2.size().height))
-        .ok_or("no resolution found")?;
+    let monitor_size = event_loop
+        .primary_monitor().ok_or("no monitor found.")?.size();
 
     let surface = WindowBuilder::new()
-        .with_inner_size(mode.size())
-        .with_min_inner_size(mode.size())
+        .with_inner_size(monitor_size)
+        .with_min_inner_size(monitor_size)
         .with_fullscreen(Some(Fullscreen::Borderless(event_loop.primary_monitor())))
         .with_title("Wave Equation (Click and Drag to apply force to pixels)")
         .build_vk_surface(&event_loop, instance)?;
@@ -132,7 +128,7 @@ fn main() -> Result<()> {
     let (args, _) = opts! {
         synopsis "wave-eq-sim - simulates the classical wave equation using rust + vulkan";
         opt pixel_size:f32=0.5, desc:"set the pixel size";
-        opt actor_count:u32=2000000, desc: "number of actors";
+        opt actor_count:u32=10000000, desc: "number of actors";
     }
     .parse_or_exit();
 
@@ -663,7 +659,7 @@ fn main() -> Result<()> {
 
                 builder
                     .dispatch(
-                        [actor_count / 128 + 1, 1, 1],
+                        [actor_count / 256 + 1, 1, 1],
                         actors_compute_pipeline.clone(),
                         actors_compute_set.clone(),
                         (),
