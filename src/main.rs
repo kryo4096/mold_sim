@@ -39,6 +39,8 @@ use egui::{FontDefinitions, Slider};
 use egui_winit_platform::*;
 use rustop::opts;
 
+mod compute;
+
 mod phero_cs {
     const _RECOMPILE_DUMMY: &str = include_str!("../res/shaders/pheromone.comp.glsl");
 
